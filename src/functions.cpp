@@ -1,36 +1,18 @@
 #include "functions.h"
 #include "enums.h"
-
 #include <math.h>
-
 #include <limits>
 
-/* yourBiggestNumber * scaleFactor < cp */
-double scaleFactor = 65530.0;
-double cp = 256.0 * 256.0;
 
-/* packs given two floats into one float */
-float pack_float(float x, float y) {
-    int x1 = (int)(x * scaleFactor);
-    int y1 = (int)(y * scaleFactor);
-    float f = (y1 * cp) + x1;
-    return f;
-}
-/* unpacks given float to two floats */
-int unpack_float(float f, float* x, float* y) {
-    double dy = floor(f / cp);
-    double dx = f - (dy * cp);
-    *y = (float)(dy / scaleFactor);
-    *x = (float)(dx / scaleFactor);
-    return 0;
-}
-
+// Find the squared distance between two points in 3-space
 coord_t distance_sq(const point_t& a, const point_t& b) {
     coord_t x = std::get<0>(a) - std::get<0>(b);
     coord_t y = std::get<1>(a) - std::get<1>(b);
     coord_t z = std::get<2>(a) - std::get<2>(b);
     return x * x + y * y + z * z;
 }
+
+// Find the distance between two points in 3-space
 coord_t distance(const point_t& a, const point_t& b) {
     coord_t x = std::get<0>(a) - std::get<0>(b);
     coord_t y = std::get<1>(a) - std::get<1>(b);
@@ -38,80 +20,22 @@ coord_t distance(const point_t& a, const point_t& b) {
     return std::sqrt(x * x + y * y + z * z);
 }
 
-bool comp(int a, int b) { return (a < b); }
 
-unsigned int getMIntArrayIndex(MIntArray& myArray, int searching) {
-    unsigned int toReturn = -1;
-    for (unsigned int element = 0; element < myArray.length(); ++element) {
-        if (myArray[element] == searching) {
-            toReturn = element;
-            break;
-        }
-    }
-    return toReturn;
-}
-
-void CVsAround(int storedU, int storedV, int numCVsInU, int numCVsInV, bool UIsPeriodic,
-               bool VIsPeriodic, MIntArray& vertices) {
-    int resCV;
-    // plus U
-    int UNext = storedU + 1;
-    if (UNext < numCVsInU) {
-        resCV = numCVsInV * UNext + storedV;
-        if (getMIntArrayIndex(vertices, resCV) == -1) vertices.append(resCV);
-    } else if (UIsPeriodic) {
-        UNext -= numCVsInU;
-        resCV = numCVsInV * UNext + storedV;
-        if (getMIntArrayIndex(vertices, resCV) == -1) vertices.append(resCV);
-    }
-    // minus U
-    int UPrev = storedU - 1;
-    if (UPrev >= 0) {
-        resCV = numCVsInV * UPrev + storedV;
-        if (getMIntArrayIndex(vertices, resCV) == -1) vertices.append(resCV);
-    } else if (UIsPeriodic) {
-        UPrev += numCVsInU;
-        resCV = numCVsInV * UPrev + storedV;
-        if (getMIntArrayIndex(vertices, resCV) == -1) vertices.append(resCV);
-    }
-    // plus V
-    int VNext = storedV + 1;
-    if (VNext < numCVsInV) {
-        resCV = numCVsInV * storedU + VNext;
-        if (getMIntArrayIndex(vertices, resCV) == -1) vertices.append(resCV);
-    } else if (VIsPeriodic) {
-        VNext -= numCVsInV;
-        resCV = numCVsInV * storedU + VNext;
-        if (getMIntArrayIndex(vertices, resCV) == -1) vertices.append(resCV);
-    }
-    // minus V
-    int VPrev = storedV - 1;
-    if (VPrev >= 0) {
-        resCV = numCVsInV * storedU + VPrev;
-        if (getMIntArrayIndex(vertices, resCV) == -1) vertices.append(resCV);
-    } else if (VIsPeriodic) {
-        VPrev += numCVsInV;
-        resCV = numCVsInV * storedU + VPrev;
-        if (getMIntArrayIndex(vertices, resCV) == -1) vertices.append(resCV);
-    }
-}
-
+// Get all CVs from a nurbs surface, and transfer those positions to the vertices of a mesh
 MStatus transferPointNurbsToMesh(MFnMesh& msh, MFnNurbsSurface& nurbsFn) {
     MStatus stat = MS::kSuccess;
     MPlug mshPnts = msh.findPlug("pnts", false, &stat);
     MPointArray allpts;
 
-    bool VIsPeriodic_ = nurbsFn.formInV() == MFnNurbsSurface::kPeriodic;
-    bool UIsPeriodic_ = nurbsFn.formInU() == MFnNurbsSurface::kPeriodic;
-    if (VIsPeriodic_ || UIsPeriodic_) {
-        int numCVsInV_ = nurbsFn.numCVsInV();
-        int numCVsInU_ = nurbsFn.numCVsInU();
-        int UDeg_ = nurbsFn.degreeU();
-        int VDeg_ = nurbsFn.degreeV();
-        if (VIsPeriodic_) numCVsInV_ -= VDeg_;
-        if (UIsPeriodic_) numCVsInU_ -= UDeg_;
-        for (int uIndex = 0; uIndex < numCVsInU_; uIndex++) {
-            for (int vIndex = 0; vIndex < numCVsInV_; vIndex++) {
+    bool VIsPeriodic = nurbsFn.formInV() == MFnNurbsSurface::kPeriodic;
+    bool UIsPeriodic = nurbsFn.formInU() == MFnNurbsSurface::kPeriodic;
+    if (VIsPeriodic || UIsPeriodic) {
+        int numCVsInV = nurbsFn.numCVsInV();
+        int numCVsInU = nurbsFn.numCVsInU();
+        if (VIsPeriodic) numCVsInV -= nurbsFn.degreeV();
+        if (UIsPeriodic) numCVsInU -= nurbsFn.degreeU();
+        for (int uIndex = 0; uIndex < numCVsInU; uIndex++) {
+            for (int vIndex = 0; vIndex < numCVsInV; vIndex++) {
                 MPoint pt;
                 nurbsFn.getCV(uIndex, vIndex, pt);
                 allpts.append(pt);
@@ -124,142 +48,91 @@ MStatus transferPointNurbsToMesh(MFnMesh& msh, MFnNurbsSurface& nurbsFn) {
     return stat;
 }
 
-MStatus findNurbsTesselateOrig(MDagPath meshPath, MObject& origMeshObj, bool verbose) {
-    if (verbose) MGlobal::displayInfo(MString(" |||| findNurbsTesselateOrig ||||"));
-    MStatus stat;
-    // the deformed mesh comes into the visible mesh
-    // through its "inmesh" plug
-    MFnDependencyNode deformedNameMesh(meshPath.node());
-    MPlug outMeshPlug = deformedNameMesh.findPlug("origMeshNurbs", false, &stat);
-    MGlobal::displayInfo(MString("---- searching from: ") + outMeshPlug.name());
-    if (stat == MS::kSuccess) {
-        MPlugArray connections;
-        outMeshPlug.connectedTo(connections, false, true);
-        int nbconnections = connections.length();
-        for (int i = 0; i < nbconnections; ++i) {
-            MPlug conn = connections[0];
-            if (verbose) MGlobal::displayInfo(MString("---- connected to is : ") + conn.name());
 
-            MFnDependencyNode sourceNode;
-            sourceNode.setObject(conn.node());
-            if (verbose)
-                MGlobal::displayInfo(MString("---- connected to is Name : ") + sourceNode.name());
-            origMeshObj = sourceNode.object();
-            return MS::kSuccess;
-        }
-    } else {
-        if (verbose) MGlobal::displayInfo(MString(" CANT FIND origMesh Attribute"));
+// Get the node connected to the origSurfNurbs plug
+MStatus findNurbsTesselateOrig(MDagPath surfPath, MObject& origSurfObj, bool verbose) {
+    if (verbose)
+        MGlobal::displayInfo(MString(" |||| findNurbsTesselateOrig ||||"));
+    MStatus stat;
+
+    MFnDependencyNode deformedNameSurf(surfPath.node());
+    MPlug outSurfPlug = deformedNameSurf.findPlug("origSurfNurbs", false, &stat);
+    if (stat != MS::kSuccess) {
+        return MS::kFailure;
     }
 
-    return MS::kFailure;
+    MPlugArray connections;
+    outSurfPlug.connectedTo(connections, false, true);
+
+    MPlug conn = connections[0];
+    if (verbose)
+        MGlobal::displayInfo(MString("---- connected to is : ") + conn.name());
+
+    MFnDependencyNode sourceNode;
+    sourceNode.setObject(conn.node());
+    if (verbose)
+        MGlobal::displayInfo(MString("---- connected to is Name : ") + sourceNode.name());
+
+    origSurfObj = sourceNode.object();
+    return MS::kSuccess;
 }
 
+
+// Find the node connected to the nurbsTessellate plug
 MStatus findNurbsTesselate(MDagPath NurbsPath, MObject& MeshObj, bool verbose) {
-    if (verbose) MGlobal::displayInfo(MString(" ---- findNurbsTesselate ----"));
+    if (verbose)
+        MGlobal::displayInfo(MString(" ---- findNurbsTesselate ----"));
     MStatus stat;
-    // the deformed mesh comes into the visible mesh
-    // through its "inmesh" plug
+
     MFnDependencyNode deformedNameMesh(NurbsPath.node());
     MPlug outMeshPlug = deformedNameMesh.findPlug("nurbsTessellate", false, &stat);
-
-    if (stat == MS::kSuccess) {
-        MPlugArray connections;
-        outMeshPlug.connectedTo(connections, false, true);
-        for (int i = 0; i < connections.length(); ++i) {
-            MPlug conn = connections[0];
-            if (verbose) MGlobal::displayInfo(MString("---- connected to is : ") + conn.name());
-
-            MFnDependencyNode sourceNode;
-            sourceNode.setObject(conn.node());
-            if (verbose)
-                MGlobal::displayInfo(MString("---- connected to is Name : ") + sourceNode.name());
-            MeshObj = sourceNode.object();
-            return MS::kSuccess;
-        }
+    if (stat != MS::kSuccess) {
+        return MS::kFailure;
     }
-    return MS::kFailure;
+
+    MPlugArray connections;
+    outMeshPlug.connectedTo(connections, false, true);
+    MPlug conn = connections[0];
+    if (verbose)
+        MGlobal::displayInfo(MString("---- connected to is : ") + conn.name());
+
+    MFnDependencyNode sourceNode;
+    sourceNode.setObject(conn.node());
+    if (verbose)
+        MGlobal::displayInfo(MString("---- connected to is Name : ") + sourceNode.name());
+    MeshObj = sourceNode.object();
+    return MS::kSuccess;
 }
 
-// from the mesh retrieves the skinCluster
-MStatus findSkinCluster(MDagPath MeshPath, MObject& theSkinCluster, int indSkinCluster,
-                        bool verbose) {
-    if (verbose) MGlobal::displayInfo(MString(" ---- findSkinCluster ----"));
-    MStatus stat;
-
-    MFnDagNode dagNode(MeshPath);  // path to the visible mesh
-    // MFnMesh meshFn(MeshPath, &stat);     // this is the visible mesh
-    MObject inObj;
-    MObject dataObj1;
-
-    MObjectArray listSkinClusters;
-    // the deformed mesh comes into the visible mesh
-    // through its "inmesh" plug
-    MPlug inMeshPlug;
-    if (MeshPath.apiType() == MFn::kMesh)
-        inMeshPlug = dagNode.findPlug("inMesh", false, &stat);
-    else if (MeshPath.apiType() == MFn::kNurbsSurface)
-        inMeshPlug = dagNode.findPlug("create", false, &stat);
-
-    if (stat == MS::kSuccess && inMeshPlug.isConnected()) {
-        // walk the tree of stuff upstream from this plug
-        MItDependencyGraph dgIt(inMeshPlug, MFn::kInvalid, MItDependencyGraph::kUpstream,
-                                MItDependencyGraph::kDepthFirst, MItDependencyGraph::kPlugLevel,
-                                &stat);
-        if (MS::kSuccess == stat) {
-            dgIt.disablePruningOnFilter();
-            int count = 0;
-
-            for (; !dgIt.isDone(); dgIt.next()) {
-                //MObject thisNode = dgIt.thisNode();
-                MObject thisNode = dgIt.currentItem();
-                // go until we find a skinCluster
-                if (thisNode.apiType() == MFn::kSkinClusterFilter) {
-                    listSkinClusters.append(thisNode);
-                }
-            }
-        }
-        int listSkinClustersLength = listSkinClusters.length();
-        if (verbose)
-            MGlobal::displayInfo(MString("    nb skinClusters is ") + listSkinClustersLength);
-        if (listSkinClustersLength > indSkinCluster) {
-            theSkinCluster = listSkinClusters[indSkinCluster];
-
-            MFnDependencyNode nodeFn(theSkinCluster);
-            if (verbose)
-                MGlobal::displayInfo(MString("    returned skinCluster: ") + nodeFn.name());
-
-            return MS::kSuccess;
-        }
-        // std::cout << "skinCluster: " << returnedSkinCluster.name().asChar() << "\n";
-    }
-    return MS::kFailure;
-}
-
+// Given a skincluster MObject, find the MDagPath of the first mesh it's deforming
 MStatus findMesh(MObject& skinCluster, MDagPath& theMeshPath, bool verbose) {
-    if (verbose) MGlobal::displayInfo(MString(" ---- findMesh ----"));
+    if (verbose)
+        MGlobal::displayInfo(MString(" ---- findMesh ----"));
+
     MFnSkinCluster theSkinCluster(skinCluster);
     MObjectArray objectsDeformed;
     theSkinCluster.getOutputGeometry(objectsDeformed);
     int objectsDeformedCount = objectsDeformed.length();
     bool doContinue = false;
-    if (objectsDeformedCount != 0) {
-        int j = 0;
-        // for (int j = 0; j < objectsDeformedCount; j++) {
-        // theMeshPath.getAPathTo(objectsDeformed[j]); // depreated
-        MDagPath::getAPathTo(objectsDeformed[j], theMeshPath);
-        if (verbose) {
-            MFnDependencyNode deformedNameMesh(objectsDeformed[j]);
-            MString deformedNameMeshSTR = deformedNameMesh.name();
-            if (verbose) MGlobal::displayInfo("     -> DEFORMING : " + deformedNameMeshSTR + "\n");
-        }
-        //}
-        return MS::kSuccess;
+
+    if (objectsDeformedCount == 0) {
+        return MS::kFailure;
     }
-    return MS::kFailure;
+
+    MDagPath::getAPathTo(objectsDeformed[0], theMeshPath);
+    if (verbose) {
+        MFnDependencyNode deformedNameMesh(objectsDeformed[0]);
+        MString deformedNameMeshSTR = deformedNameMesh.name();
+        if (verbose)
+            MGlobal::displayInfo("     -> DEFORMING : " + deformedNameMeshSTR + "\n");
+    }
+    return MS::kSuccess;
 }
 
+// Given a skincluster MObject, get the orig mesh
 MStatus findOrigMesh(MObject& skinCluster, MObject& origMesh, bool verbose) {
-    if (verbose) MGlobal::displayInfo(MString(" ---- find Orig Mesh ----"));
+    if (verbose)
+        MGlobal::displayInfo(MString(" ---- find Orig Mesh ----"));
     MFnSkinCluster theSkinCluster(skinCluster);
     MObjectArray objectsDeformed;
     theSkinCluster.getInputGeometry(objectsDeformed);
@@ -275,22 +148,7 @@ MStatus getListColorsJoints(MObject& skinCluster, int nbJoints,
                             MIntArray indicesForInfluenceObjects, MColorArray& jointsColors,
                             bool verbose) {
     MStatus stat = MS::kSuccess;
-    if (verbose)
-        MGlobal::displayInfo(MString("---------------- [getListColorsJoints()]------------------"));
 
-    if (verbose) {
-        MDagPathArray listOfJoints;
-        MFnSkinCluster theSkinCluster(skinCluster);
-        theSkinCluster.influenceObjects(listOfJoints, &stat);
-        int nbJoints = listOfJoints.length();
-        MStringArray allJointsNames;
-        MGlobal::displayInfo(MString(" nbJoints from skinCluster ") + nbJoints);
-        for (int i = 0; i < nbJoints; i++) {
-            MFnDagNode jnt(listOfJoints[i]);
-            MString jointName = jnt.name();
-            MGlobal::displayInfo(jointName + " " + i);
-        }
-    }
     // start
     jointsColors.clear();
     jointsColors.setLength(nbJoints);
@@ -308,18 +166,10 @@ MStatus getListColorsJoints(MObject& skinCluster, int nbJoints,
     }
     int nbElements = influenceColor_plug.numElements();
 
-    if (verbose)
-        MGlobal::displayInfo(influenceColor_plug.name() + " nbJoints [" + nbJoints +
-                             "] nbElements [" + nbElements + "]");
     for (int i = 0; i < nbElements; ++i) {  // for each joint
 
         MPlug colorPlug = influenceColor_plug.elementByPhysicalIndex(i);
         int logicalInd = colorPlug.logicalIndex();
-        if (verbose) {
-            int indexInfluence = indicesForInfluenceObjects[logicalInd];
-            MGlobal::displayInfo(MString("i : ") + i + MString("logical Index: ") + logicalInd +
-                                 MString(" | indicesForInfluenceObjects ") + indexInfluence);
-        }
         logicalInd = indicesForInfluenceObjects[logicalInd];
         if (logicalInd < 0 || logicalInd >= nbJoints) {
             MGlobal::displayError(MString("CRASH i : ") + i + MString("logical Index: ") +
@@ -335,23 +185,14 @@ MStatus getListColorsJoints(MObject& skinCluster, int nbJoints,
                 MPlug theConn = connections[0];
                 float element[4] = {theConn.child(0).asFloat(), theConn.child(1).asFloat(),
                                     theConn.child(2).asFloat(), 1};
-                if (verbose)
-                    MGlobal::displayInfo(colorPlug.name() + " " + element[0] + " " + element[1] +
-                                         " " + element[2]);
                 jointsColors.set(element, logicalInd);
             } else {
-                if (verbose)
-                    MGlobal::displayInfo(colorPlug.name() + " " + black[0] + " " + black[1] + " " +
-                                         black[2]);
                 jointsColors.set(black, logicalInd);
             }
         } else {
             // MGlobal::displayInfo(colorPlug.name());
             float element[4] = {colorPlug.child(0).asFloat(), colorPlug.child(1).asFloat(),
                                 colorPlug.child(2).asFloat(), 1};
-            if (verbose)
-                MGlobal::displayInfo(colorPlug.name() + " " + element[0] + " " + element[1] + " " +
-                                     element[2]);
             jointsColors.set(element, logicalInd);
         }
     }
@@ -429,79 +270,6 @@ MStatus getListLockVertices(MObject& skinCluster, MIntArray& vertsLocks, MIntArr
     // MGlobal::displayInfo(MString(" getListLockVertices | ") + currentColorSet.name () + MString("
     // ") + vertsLocks.length());
     return stat;
-}
-
-MStatus getSymetryAttributes(MObject& skinCluster, MIntArray& symetryList) {
-    MStatus stat;
-
-    MFnSkinCluster theSkinCluster(skinCluster);
-    MObjectArray objectsDeformed;
-    theSkinCluster.getOutputGeometry(objectsDeformed);
-
-    MFnDagNode deformedNameMesh(objectsDeformed[0]);
-    MObject prt = deformedNameMesh.parent(0);
-
-    MFnDependencyNode prtDep(prt);
-    MPlug symVerticesPlug = prtDep.findPlug("symmetricVertices", false, &stat);
-    if (MS::kSuccess != stat) {
-        MGlobal::displayError(MString("cant find symmetricVertices plug"));
-        return stat;
-    }
-
-    MObject Data;
-    stat = symVerticesPlug.getValue(Data);  // to get the attribute
-
-    MFnIntArrayData intData(Data);
-    symetryList = intData.array(&stat);
-    return stat;
-}
-
-MStatus getMirrorVertices(MIntArray mirrorVertices, MIntArray& theEditVerts,
-                          MIntArray& theMirrorVerts, MIntArray& editAndMirrorVerts,
-                          MDoubleArray& editVertsWeights, MDoubleArray& mirrorVertsWeights,
-                          MDoubleArray& editAndMirrorWeights, bool doMerge) {
-    // doMerge do we merge the weights ? if painting the same influence or smooth
-    MStatus status;
-
-    MIntArray vertExists(mirrorVertices.length(), -1);
-
-    editAndMirrorVerts.copy(theEditVerts);
-    editAndMirrorWeights.copy(editVertsWeights);
-    if (!doMerge) {  // mirror verts same length and weights
-        mirrorVertsWeights.copy(editVertsWeights);
-        theMirrorVerts.setLength(theEditVerts.length());
-    }
-
-    for (unsigned int i = 0; i < theEditVerts.length(); ++i) vertExists[theEditVerts[i]] = i;
-    for (unsigned int i = 0; i < theEditVerts.length(); ++i) {
-        int theVert = theEditVerts[i];
-        int theMirroredVert = mirrorVertices[theVert];
-
-        if (!doMerge) theMirrorVerts[i] = theMirroredVert;  // to
-        double theWeight = editVertsWeights[i];
-        int indVertExists = vertExists[theMirroredVert];
-        if (indVertExists == -1) {  // not in first array
-            if (doMerge) {
-                theMirrorVerts.append(theMirroredVert);
-                mirrorVertsWeights.append(theWeight);
-            }
-            editAndMirrorVerts.append(theMirroredVert);
-            editAndMirrorWeights.append(theWeight);
-        } else if (doMerge && theWeight < 1.0) {  // clip weight at 1
-            double prevWeight = editVertsWeights[indVertExists];
-            if (theWeight >
-                prevWeight) {  // add the remaining if existing weight is less than this new weight
-                theMirrorVerts.append(theMirroredVert);
-                mirrorVertsWeights.append(theWeight - prevWeight);
-                editAndMirrorWeights[indVertExists] = theWeight;  // edit weight
-            }
-        }
-    }
-    // MGlobal::displayError(MString("theEditVerts ") + theEditVerts.length() + MString("
-    // theMirrorVerts ") + theMirrorVerts.length() + MString(" editAndMirrorVerts ") +
-    // editAndMirrorVerts.length() );
-
-    return status;
 }
 
 MStatus editLocks(MObject& skinCluster, MIntArray& inputVertsToLock, bool addToLock,
@@ -975,72 +743,6 @@ MStatus setAverageWeight(std::vector<int>& verticesAround, int currentVertex, in
     return MS::kSuccess;
 }
 
-MStatus doPruneWeight(MDoubleArray& theWeights, int nbJoints, double pruneCutWeight) {
-    MStatus stat;
-
-    int vertIndex, jnt, posiInArray;
-    int nbElements = theWeights.length();
-    int nbVertices = nbElements / nbJoints;
-    double total = 0.0, val;
-
-    for (vertIndex = 0; vertIndex < nbVertices; ++vertIndex) {
-        total = 0.0;
-        for (jnt = 0; jnt < nbJoints; jnt++) {
-            posiInArray = vertIndex * nbJoints + jnt;
-            val = theWeights[posiInArray];
-            if (val > pruneCutWeight) {
-                total += val;
-            } else {
-                theWeights[posiInArray] = 0.0;
-            }
-        }
-        // now normalize
-        if (total != 1.0) {
-            for (jnt = 0; jnt < nbJoints; jnt++) {
-                posiInArray = vertIndex * nbJoints + jnt;
-                theWeights[posiInArray] /= total;  // that should normalize
-            }
-        }
-    }
-    return MS::kSuccess;
-};
-
-void lineSTD(float x1, float y1, float x2, float y2, std::vector<std::pair<float, float>>& posi) {
-    // Bresenham's line algorithm
-    bool steep = (fabs(y2 - y1) > fabs(x2 - x1));
-    if (steep) {
-        std::swap(x1, y1);
-        std::swap(x2, y2);
-    }
-
-    if (x1 > x2) {
-        std::swap(x1, x2);
-        std::swap(y1, y2);
-    }
-
-    float dx = x2 - x1;
-    float dy = fabs(y2 - y1);
-
-    float error = dx / 2.0f;
-    int ystep = (y1 < y2) ? 1 : -1;
-    int y = (int)y1;
-
-    int maxX = (int)x2;
-
-    for (int x = (int)x1; x < maxX; x++) {
-        if (steep) {
-            posi.push_back(std::make_pair(y, x));
-        } else {
-            posi.push_back(std::make_pair(x, y));
-        }
-        error -= dy;
-        if (error < 0) {
-            y += ystep;
-            error += dx;
-        }
-    }
-}
-
 void lineC(short x0, short y0, short x1, short y1, std::vector<std::pair<short, short>>& posi) {
     short dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
     short dy = abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
@@ -1062,9 +764,6 @@ void lineC(short x0, short y0, short x1, short y1, std::vector<std::pair<short, 
         }
     }
 }
-float dist2D(short x0, short y0, short x1, short y1) {
-    return sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
-};
 
 bool RayIntersectsBBox(MPoint minPt, MPoint maxPt, MPoint orig, MVector direction) {
     double tmin = (minPt.x - orig.x) / direction.x;
@@ -1135,47 +834,6 @@ inline bool inUnitPlane(const MPoint& inter) {
            (inter.z <= 1.0 && inter.z >= -1.0);
 }
 
-bool bboxIntersection(const MPoint& minPoint, const MPoint& maxPoint, const MMatrix& bbSpace,
-                      const MPoint& rayPoint, const MVector& rayVector, MPoint& intersection) {
-    // Get the bbox matrix and its inverse
-    MMatrix bbm = bboxMatrix(minPoint, maxPoint, bbSpace);
-    MMatrix bbmi = bbm.inverse();
-
-    // Transform the ray point/vector into the bbox matrix space
-    MPoint rp = rayPoint * bbmi;
-    MVector rv = rayVector * bbmi;
-
-    MPoint rawInter;
-    double rawDist = std::numeric_limits<double>::infinity();
-    bool found = false;
-
-    // For x/y/z
-    for (int i = 0; i < 3; ++i) {
-        // for +- 1
-        for (int j = 0; j < 2; ++j) {
-            MVector nrm;
-            nrm[i] = 2 * j - 1;
-            // Get the offset intersection
-            MPoint inter = offsetIntersection(rp, rv, nrm);
-            if (inUnitPlane(inter)) {
-                // Keep track of the closest point
-                double dist = inter.distanceTo(rp);
-                if (dist < rawDist) {
-                    rawDist = dist;
-                    rawInter = inter;
-                    found = true;
-                }
-            }
-        }
-    }
-
-    // Only do the transformation if we found something
-    if (found) intersection = rawInter * bbm;
-
-    return found;
-}
-
-// Tyler find Functions
 void getRawNeighbors(const MIntArray& counts, const MIntArray& indices, int numVerts,
                      std::vector<std::unordered_set<int>>& faceNeighbors,
                      std::vector<std::unordered_set<int>>& edgeNeigbors) {
